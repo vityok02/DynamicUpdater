@@ -3,10 +3,8 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Npgsql;
-using Serilog;
 
 namespace Data.Module;
 
@@ -21,11 +19,9 @@ public class DataApiCore : IDynamicCore
     private WebApplication? _app;
     private WebApplicationBuilder _appBuilder = WebApplication.CreateBuilder();
 
-    private static int Counter = 0;
 
     public void ConfigureServices(IServiceCollection services)
     {
-        Counter++;
         _appBuilder.Services.AddDbContext<AppDbContext>(options =>
         {
             options.UseNpgsql("Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=postgres");
@@ -47,7 +43,6 @@ public class DataApiCore : IDynamicCore
 
         using var scope = _app.Services.CreateScope();
 
-        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
         var logger = scope.ServiceProvider.GetRequiredService<ILogger<DataApiCore>>();
 
@@ -57,7 +52,7 @@ public class DataApiCore : IDynamicCore
         {
             //dbContext.Database.EnsureCreated();
 
-            var dbSet = dbContext.Set<Data>();
+            //var dbSet = dbContext.Set<Data>();
 
             //if (!dbSet.Any())
             //{
@@ -95,7 +90,7 @@ public class DataApiCore : IDynamicCore
         await _app.DisposeAsync();
 
         // MEMORY LEAK
-        NpgsqlConnection.ClearAllPools();
+        //NpgsqlConnection.ClearAllPools();
 
         _app = null;
         _appBuilder = null!;
