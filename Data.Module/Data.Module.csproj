@@ -1,0 +1,43 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<EnableDynamicLoading>true</EnableDynamicLoading>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.0" />
+		<PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.0" />
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
+		<PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.0" />
+		<PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
+		<PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Folder Include="Database\" />
+	</ItemGroup>
+
+	<Target Name="CopyToAssemblies" AfterTargets="Build">
+		<PropertyGroup>
+			<PluginOutputDir>$(MSBuildThisFileDirectory)..\DynamicUpdater.Host\Assemblies\</PluginOutputDir>
+		</PropertyGroup>
+
+		<MakeDir Directories="$(PluginOutputDir)" />
+
+		<ItemGroup>
+			<AllOutputFiles Include="$(TargetDir)**\*.*" />
+			<!--<PluginFiles Include="$(TargetDir)$(AssemblyName).dll" />
+			<PluginFiles Include="$(TargetDir)$(AssemblyName).pdb" Condition="Exists('$(TargetDir)$(AssemblyName).pdb')" />-->
+		</ItemGroup>
+
+		<Copy SourceFiles="@(AllOutputFiles)" DestinationFolder="$(PluginOutputDir)%(RecursiveDir)" SkipUnchangedFiles="true" />
+	</Target>
+
+</Project>

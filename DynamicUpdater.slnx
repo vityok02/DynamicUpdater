@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="Data.Module/Data.Module.csproj" />
+  <Project Path="DynamicUpdater.Host/DynamicUpdater.Host.csproj" />
+  <Project Path="DynamicUpdater.Tests/DynamicUpdater.Tests.csproj" Id="2089368f-c201-4aa7-8bbb-073e5f6f3455" />
+  <Project Path="HelloWorld.Module/HelloWorld.Module.csproj" />
+</Solution>
