@@ -6,7 +6,6 @@ using DynamicUpdater.Host.Middlewares;
 using DynamicUpdater.Host.Options;
 using Microsoft.Extensions.Options;
 using Serilog;
-using Serilog.Sinks.SystemConsole.Themes;
 
 namespace DynamicUpdater.Host.Extensions;
 

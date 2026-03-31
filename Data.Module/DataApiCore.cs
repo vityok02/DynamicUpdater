@@ -75,10 +75,10 @@ public class DataApiCore : IDynamicCore
 
         _app.MapGet("/", () => $"Data API is alive: {DateTime.Now}");
 
-        //_app.MapGet("/api/data", async (AppDbContext dbContext) =>
-        //{
-        //    return await dbContext.Items.ToListAsync();
-        //});
+        _app.MapGet("/api/data", async (AppDbContext dbContext) =>
+        {
+            return await dbContext.Items.ToListAsync();
+        });
 
         logger.LogInformation("Data API is starting on port 9001...");
         await _app.StartAsync(_cts.Token);

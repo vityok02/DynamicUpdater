@@ -1,7 +1,6 @@
 ﻿using DynamicUpdater.Host.Contracts;
 using DynamicUpdater.Host.Infrastructure.DynamicManagement;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System.Runtime.CompilerServices;
 
@@ -12,48 +11,35 @@ public class UnloadTests
     [Fact]
     public async Task Data_Module_Should_Unload_Cleanly()
     {
-        var moduleBinaryPath = Path.Combine(AppContext.BaseDirectory, "Data.Module.dll");
-        Assert.True(File.Exists(moduleBinaryPath), $"Module binary was not found: {moduleBinaryPath}");
+        var modulePath = GetModulePathFromHostAssemblies("Data.Module.dll");
+        Assert.True(File.Exists(modulePath), $"Module binary was not found: {modulePath}");
 
-        var isolatedRoot = CreateIsolatedContentRoot(moduleBinaryPath);
+        var weakRef = await ExecuteAndUnloadInternal(modulePath);
 
-        try
+        for (int i = 0; i < 12 && weakRef.IsAlive; i++)
         {
-            var weakRef = await ExecuteAndUnloadInternal(isolatedRoot);
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
 
-            for (int i = 0; i < 12 && weakRef.IsAlive; i++)
+            if (weakRef.IsAlive)
             {
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
-
-                if (weakRef.IsAlive)
-                {
-                    await Task.Delay(250);
-                }
+                await Task.Delay(250);
             }
+        }
 
-            Assert.False(weakRef.IsAlive, "ALC is still alive after unload and forced GC.");
-        }
-        finally
-        {
-            TryDeleteDirectory(isolatedRoot);
-        }
+        Assert.False(weakRef.IsAlive, "ALC is still alive after unload and forced GC.");
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static async Task<WeakReference> ExecuteAndUnloadInternal(string contentRoot)
+    private static async Task<WeakReference> ExecuteAndUnloadInternal(string modulePath)
     {
         using var loggerFactory = LoggerFactory.Create(builder => builder.SetMinimumLevel(LogLevel.None));
 
-        var moduleFactory = new DynamicModuleFactory(
-            loggerFactory.CreateLogger<DynamicModuleFactory>(),
-            new TestHostEnvironment(contentRoot));
-
-        DynamicModule module = moduleFactory.Create();
-        var alc = module.ALC;
+        var alc = new DynamicAssemblyLoadContext(modulePath);
+        var assembly = alc.LoadFromAssemblyPath(modulePath);
         var weakRef = new WeakReference(alc);
 
-        var coreType = module.Assembly.GetTypes().FirstOrDefault(t =>
+        var coreType = assembly.GetTypes().FirstOrDefault(t =>
             !t.IsInterface &&
             !t.IsAbstract &&
             t.GetMethods().Any(m => m.Name == nameof(IDynamicCore.ConfigureServices)) &&
@@ -62,7 +48,7 @@ public class UnloadTests
 
         Assert.NotNull(coreType);
 
-        var instance = ActivatorUtilities.CreateInstance(module.ServiceProvider, coreType!);
+        var instance = Activator.CreateInstance(coreType!);
         var dynamicCore = new DynamicProxy(instance);
 
         var services = new ServiceCollection();
@@ -74,62 +60,17 @@ public class UnloadTests
         dynamicCore = null!;
         instance = null!;
 
-        await module.DisposeAsync();
-        module = null!;
-
         alc.Unload();
         alc = null!;
 
         return weakRef;
     }
 
-    private static string CreateIsolatedContentRoot(string moduleBinaryPath)
+    private static string GetModulePathFromHostAssemblies(string moduleFileName)
     {
-        var root = Path.Combine(Path.GetTempPath(), $"dynamic-updater-tests-{Guid.NewGuid():N}");
-        var assembliesPath = Path.Combine(root, "Assemblies");
-        Directory.CreateDirectory(assembliesPath);
+        var solutionRoot = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", ".."));
+        var assembliesPath = Path.Combine(solutionRoot, "DynamicUpdater.Host", "Assemblies");
 
-        var moduleDirectory = Path.GetDirectoryName(moduleBinaryPath)!;
-
-        foreach (var filePath in Directory.GetFiles(moduleDirectory, "Data.Module*"))
-        {
-            var targetPath = Path.Combine(assembliesPath, Path.GetFileName(filePath));
-            File.Copy(filePath, targetPath, overwrite: true);
-        }
-
-        return root;
-    }
-
-    private static void TryDeleteDirectory(string path)
-    {
-        try
-        {
-            if (Directory.Exists(path))
-            {
-                Directory.Delete(path, recursive: true);
-            }
-        }
-        catch
-        {
-        }
-    }
-
-    private sealed class TestHostEnvironment : IHostEnvironment
-    {
-        public TestHostEnvironment(string contentRootPath)
-        {
-            ContentRootPath = contentRootPath;
-            ApplicationName = nameof(DynamicUpdater.Tests);
-            EnvironmentName = Environments.Development;
-            ContentRootFileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(contentRootPath);
-        }
-
-        public string EnvironmentName { get; set; }
-
-        public string ApplicationName { get; set; }
-
-        public string ContentRootPath { get; set; }
-
-        public Microsoft.Extensions.FileProviders.IFileProvider ContentRootFileProvider { get; set; }
+        return Path.Combine(assembliesPath, moduleFileName);
     }
 }

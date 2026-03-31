@@ -1,131 +1,105 @@
-﻿using DynamicUpdater.Host.Infrastructure.AssemblyProvider;
+﻿using DynamicUpdater.Host.Contracts;
 using DynamicUpdater.Host.Infrastructure.DynamicManagement;
-using DynamicUpdater.Host.Options;
-using Microsoft.Extensions.Options;
+using System.Runtime.CompilerServices;
 
 namespace DynamicUpdater.Host.BackgroundServices;
 
 public sealed class DynamicUpdateService : BackgroundService
 {
-    private readonly IServiceScopeFactory _scopeFactory;
-    private readonly DynamicModuleFactory _dynamicFactory;
-    private readonly IDynamicContainer _dynamicContainer;
+    private readonly DynamicModuleFactory _moduleFactory;
     private readonly ILogger<DynamicUpdateService> _logger;
-    private readonly IOptionsMonitor<TimerOptions> _optionsMonitor;
+
+    private readonly string _assembliesPath;
+    private readonly IHostEnvironment _env;
 
     public DynamicUpdateService(
-        IServiceScopeFactory scopeFactory,
-        DynamicModuleFactory dynamicModuleFactory,
-        IDynamicContainer dynamicContainer,
+        DynamicModuleFactory moduleFactory,
         ILogger<DynamicUpdateService> logger,
-        IOptionsMonitor<TimerOptions> timerOptionsMonitor)
+        IHostEnvironment env)
     {
-        _scopeFactory = scopeFactory;
-        _dynamicFactory = dynamicModuleFactory;
-        _dynamicContainer = dynamicContainer;
+        _moduleFactory = moduleFactory;
         _logger = logger;
-        _optionsMonitor = timerOptionsMonitor;
+
+        _env = env;
+
+        _assembliesPath = Path
+            .Combine(_env.ContentRootPath, "Assemblies");
+
+        if (!Directory.Exists(_assembliesPath))
+        {
+            Directory.CreateDirectory(_assembliesPath);
+        }
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("Dynamic Update Service started.");
-
-        await UpdateCycleAsync(stoppingToken);
-
-        var options = _optionsMonitor.CurrentValue;
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(options.IntervalInSeconds));
+        var isolatedRoot = Directory
+            .GetFiles(_assembliesPath, "*.Module.dll")
+            .FirstOrDefault();
 
         try
         {
-            while (await timer.WaitForNextTickAsync(stoppingToken))
+            var weakRef = await RunAndUnload(isolatedRoot);
+
+            for (int i = 0; i < 12 && weakRef.IsAlive; i++)
             {
-                await UpdateCycleAsync(stoppingToken);
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
 
-                var currentInterval = TimeSpan.FromSeconds(
-                    _optionsMonitor.CurrentValue.IntervalInSeconds);
-
-                if (timer.Period != currentInterval)
+                if (weakRef.IsAlive)
                 {
-                    timer.Period = currentInterval;
-                    _logger.LogInformation(
-                        "Update interval changed to {Seconds} seconds.",
-                        currentInterval.TotalSeconds);
+                    await Task.Delay(250);
                 }
             }
-        }
-        catch (OperationCanceledException)
-        {
-            _logger.LogInformation(
-                "Dynamic Update Service is stopping due to host shutdown.");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogCritical(
-                ex,
-                "FATAL: An unhandled exception occurred in the Dynamic Update Service. The background worker has crashed.");
-        }
-    }
 
-    private async Task UpdateCycleAsync(CancellationToken cancellationToken)
-    {
-        using var scope = _scopeFactory
-            .CreateScope();
-
-        DynamicModule? newModule = null;
-
-        try
-        {
-            var assemblyProvider = scope.ServiceProvider
-                .GetRequiredService<IAssemblyProvider>();
-
-            var assemblyBytes = await assemblyProvider
-                .GetAssemblyBytesAsync(cancellationToken);
-
-            newModule = _dynamicFactory
-                .Create();
-
-            await _dynamicContainer
-                .UpdateModuleAsync(newModule, cancellationToken);
-
-            _logger.LogInformation(
-                "Dynamic module updated successfully. Current module: {DynamicModule}",
-                newModule.Assembly.FullName);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(
-                ex,
-                "An error occurred during the dynamic module update cycle. The system will retry in {Delay} seconds.",
-                _optionsMonitor.CurrentValue.IntervalInSeconds);
-
-            if (newModule is not null)
+            if (weakRef.IsAlive)
             {
-                await CleanupOrphanedDynamicModuleAsync(newModule);
+                _logger.LogCritical("MEMORY LEAK");
+            }
+            else
+            {
+                _logger.LogInformation("ALC successfully unloaded.");
             }
         }
+        finally
+        {
+        }
     }
 
-    private async Task CleanupOrphanedDynamicModuleAsync(DynamicModule dynamicModule)
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private async Task<WeakReference> RunAndUnload(string contentRoot)
     {
-        try
-        {
-            _logger.LogWarning(
-                "Cleaning up orphaned dynamic module.");
+        using var loggerFactory = LoggerFactory.Create(builder => builder.SetMinimumLevel(LogLevel.None));
 
-            var alc = dynamicModule.ALC;
-            await dynamicModule.DisposeAsync();
-            alc.Unload();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogCritical(
-                ex,
-                "FATAL: Failed to cleanup dynamic module. Potential memory leak.");
-        }
+        DynamicModule module = _moduleFactory.Create();
+        var alc = module.ALC;
+        var weakRef = new WeakReference(alc);
+
+        var coreType = module.Assembly.GetTypes().FirstOrDefault(t =>
+            !t.IsInterface &&
+            !t.IsAbstract &&
+            t.GetMethods().Any(m => m.Name == nameof(IDynamicCore.ConfigureServices)) &&
+            t.GetMethods().Any(m => m.Name == nameof(IDynamicCore.Start)) &&
+            t.GetMethods().Any(m => m.Name == nameof(IDynamicCore.Stop)));
+
+        var instance = ActivatorUtilities.CreateInstance(module.ServiceProvider, coreType!);
+        var dynamicCore = new DynamicProxy(instance);
+
+        var services = new ServiceCollection();
+        dynamicCore.ConfigureServices(services);
+
+        await dynamicCore.Start();
+        await dynamicCore.Stop();
+
+        dynamicCore = null!;
+        instance = null!;
+
+        await module.DisposeAsync();
+        module = null!;
+
+        alc.Unload();
+        alc = null!;
+
+        return weakRef;
     }
 }
