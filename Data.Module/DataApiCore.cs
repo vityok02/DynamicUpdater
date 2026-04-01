@@ -1,17 +1,10 @@
 ﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Npgsql;
 
 namespace Data.Module;
-
-public class DynamicModelCacheKeyFactory : IModelCacheKeyFactory
-{
-    public object Create(DbContext context, bool designTime) => Guid.NewGuid();
-}
 
 public class DataApiCore : IDynamicCore
 {
@@ -19,14 +12,12 @@ public class DataApiCore : IDynamicCore
     private WebApplication? _app;
     private WebApplicationBuilder _appBuilder = WebApplication.CreateBuilder();
 
-
     public void ConfigureServices(IServiceCollection services)
     {
         _appBuilder.Services.AddDbContextFactory<AppDbContext>(options =>
         {
             options.UseNpgsql("Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=postgres");
             options.EnableServiceProviderCaching(false);
-            options.ReplaceService<IModelCacheKeyFactory, DynamicModelCacheKeyFactory>();
         });
 
         foreach (var service in services)
@@ -47,43 +38,35 @@ public class DataApiCore : IDynamicCore
 
             logger.LogInformation("DataApiCore started. Initializing database...");
 
-            try
+            var dbContextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AppDbContext>>();
+
+            var dbContext = dbContextFactory.CreateDbContext();
+
+            var dbSet = dbContext.Set<Data>();
+
+            var data = dbSet
+                .ToArray();
+
+            foreach (var item in data)
             {
-                //dbContext.Database.EnsureCreated();
-
-                //var dbSet = dbContext.Set<Data>();
-
-                //if (!dbSet.Any())
-                //{
-                //    dbSet.AddRange(
-                //        new Data(Guid.NewGuid(), "Value 1"),
-                //        new Data(Guid.NewGuid(), "Value 2"),
-                //        new Data(Guid.NewGuid(), "Value 3"));
-
-                //    dbContext.SaveChanges();
-                //}
-            }
-            catch (Exception)
-            {
+                Console.WriteLine(item);
             }
         }
 
         _app.MapGet("/", (ILoggerFactory loggerFactory) =>
         {
-            // Використовуємо рядок замість типу Generic. Це не створює зв'язку з ALC.
             var logger = loggerFactory.CreateLogger("DynamicPlugin");
             var message = $"Data API is alive: {DateTime.Now}";
             logger.LogInformation(message);
             return message;
         });
 
-        // Memory leak after call
+        // MEMORY LEAK
         _app.MapGet("/api/data", async (IDbContextFactory<AppDbContext> dbContextFactory) =>
         {
             using (var dbContext = dbContextFactory.CreateDbContext())
             {
-                //return await dbContext.Items.AsNoTracking().ToListAsync();
-                return;
+                return await dbContext.Items.AsNoTracking().ToListAsync();
             }
         });
 
@@ -99,9 +82,6 @@ public class DataApiCore : IDynamicCore
 
         await _app.StopAsync(stopCts.Token);
         await _app.DisposeAsync();
-
-        // MEMORY LEAK
-        //NpgsqlConnection.ClearAllPools();
 
         _app = null;
         _appBuilder = null!;
