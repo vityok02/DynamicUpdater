@@ -22,7 +22,7 @@ public class DataApiCore : IDynamicCore
 
     public void ConfigureServices(IServiceCollection services)
     {
-        _appBuilder.Services.AddDbContext<AppDbContext>(options =>
+        _appBuilder.Services.AddDbContextFactory<AppDbContext>(options =>
         {
             options.UseNpgsql("Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=postgres");
             options.EnableServiceProviderCaching(false);
@@ -41,41 +41,52 @@ public class DataApiCore : IDynamicCore
 
         _app = _appBuilder.Build();
 
-        using var scope = _app.Services.CreateScope();
-
-
-        var logger = scope.ServiceProvider.GetRequiredService<ILogger<DataApiCore>>();
-
-        logger.LogInformation("DataApiCore started. Initializing database...");
-
-        try
+        using (var scope = _app.Services.CreateScope())
         {
-            //dbContext.Database.EnsureCreated();
+            var logger = scope.ServiceProvider.GetRequiredService<ILogger<DataApiCore>>();
 
-            //var dbSet = dbContext.Set<Data>();
+            logger.LogInformation("DataApiCore started. Initializing database...");
 
-            //if (!dbSet.Any())
-            //{
-            //    dbSet.AddRange(
-            //        new Data(Guid.NewGuid(), "Value 1"),
-            //        new Data(Guid.NewGuid(), "Value 2"),
-            //        new Data(Guid.NewGuid(), "Value 3"));
+            try
+            {
+                //dbContext.Database.EnsureCreated();
 
-            //    dbContext.SaveChanges();
-            //}
+                //var dbSet = dbContext.Set<Data>();
+
+                //if (!dbSet.Any())
+                //{
+                //    dbSet.AddRange(
+                //        new Data(Guid.NewGuid(), "Value 1"),
+                //        new Data(Guid.NewGuid(), "Value 2"),
+                //        new Data(Guid.NewGuid(), "Value 3"));
+
+                //    dbContext.SaveChanges();
+                //}
+            }
+            catch (Exception)
+            {
+            }
         }
-        catch (Exception)
-        {
-        }
 
-        _app.MapGet("/", () => $"Data API is alive: {DateTime.Now}");
-
-        _app.MapGet("/api/data", async (AppDbContext dbContext) =>
+        _app.MapGet("/", (ILoggerFactory loggerFactory) =>
         {
-            return await dbContext.Items.ToListAsync();
+            // Використовуємо рядок замість типу Generic. Це не створює зв'язку з ALC.
+            var logger = loggerFactory.CreateLogger("DynamicPlugin");
+            var message = $"Data API is alive: {DateTime.Now}";
+            logger.LogInformation(message);
+            return message;
         });
 
-        logger.LogInformation("Data API is starting on port 9001...");
+        // Memory leak after call
+        _app.MapGet("/api/data", async (IDbContextFactory<AppDbContext> dbContextFactory) =>
+        {
+            using (var dbContext = dbContextFactory.CreateDbContext())
+            {
+                //return await dbContext.Items.AsNoTracking().ToListAsync();
+                return;
+            }
+        });
+
         await _app.StartAsync(_cts.Token);
     }
 

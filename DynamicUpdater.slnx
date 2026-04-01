@@ -1,4 +1,7 @@
 <Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="Ideas.txt" />
+  </Folder>
   <Project Path="Data.Module/Data.Module.csproj" />
   <Project Path="DynamicUpdater.Console/DynamicUpdater.Console.csproj" Id="dea33ae2-4dee-4249-a167-de14014b2a98" />
   <Project Path="DynamicUpdater.Host/DynamicUpdater.Host.csproj" />

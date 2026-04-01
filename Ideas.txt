@@ -1,0 +1,2 @@
+MetadataLoadContext to validate the input assembly.
+assembly.EntryPoint
