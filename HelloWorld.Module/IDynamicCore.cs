@@ -1,6 +1,6 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 
-namespace HelloWorld.Module;
+namespace Module.Worker;
 
 public interface IDynamicCore
 {

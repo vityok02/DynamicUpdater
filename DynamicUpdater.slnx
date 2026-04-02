@@ -2,9 +2,9 @@
   <Folder Name="/Solution Items/">
     <File Path="Ideas.txt" />
   </Folder>
-  <Project Path="Data.Module/Data.Module.csproj" />
+  <Project Path="Data.Module/Module.Api.csproj" />
   <Project Path="DynamicUpdater.Console/DynamicUpdater.Console.csproj" Id="dea33ae2-4dee-4249-a167-de14014b2a98" />
   <Project Path="DynamicUpdater.Host/DynamicUpdater.Host.csproj" />
   <Project Path="DynamicUpdater.Tests/DynamicUpdater.Tests.csproj" Id="2089368f-c201-4aa7-8bbb-073e5f6f3455" />
-  <Project Path="HelloWorld.Module/HelloWorld.Module.csproj" />
+  <Project Path="HelloWorld.Module/Module.Worker.csproj" />
 </Solution>

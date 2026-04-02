@@ -15,9 +15,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Data.Module\Data.Module.csproj" />
+    <ProjectReference Include="..\Data.Module\Module.Api.csproj" />
     <ProjectReference Include="..\DynamicUpdater.Host\DynamicUpdater.Host.csproj" />
-    <ProjectReference Include="..\HelloWorld.Module\HelloWorld.Module.csproj" />
+    <ProjectReference Include="..\HelloWorld.Module\Module.Worker.csproj" />
   </ItemGroup>
 
   <ItemGroup>

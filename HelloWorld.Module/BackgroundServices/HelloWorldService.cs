@@ -1,6 +1,6 @@
 ﻿using Microsoft.Extensions.Hosting;
 
-namespace HelloWorld.Module.BackgroundServices;
+namespace Module.Worker.BackgroundServices;
 
 public sealed class HelloWorldService : BackgroundService
 {

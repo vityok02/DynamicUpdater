@@ -1,6 +1,6 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 
-namespace Data.Module;
+namespace Module.Api;
 
 public interface IDynamicCore
 {

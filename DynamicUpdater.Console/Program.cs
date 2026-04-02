@@ -2,56 +2,81 @@
 using System.Reflection;
 using System.Runtime.Loader;
 
-var path = @"C:\Main\Repositories\DynamicUpdater\DynamicUpdater.Host\Assemblies\Data.Module.dll";
+var assembliesPath = @"C:\Main\Repositories\DynamicUpdater\DynamicUpdater.Host\Assemblies\";
+var moduleFolders = Directory.GetDirectories(assembliesPath);
 
-var alc = new CustomAssemblyLoadContext("CustomModule", path);
-var assembly = alc.LoadFromAssemblyPath(path);
+var activeModules = new List<(CustomAssemblyLoadContext Alc, object Instance, Type CoreType)>();
 
-var coreType = assembly.GetTypes()
-    .FirstOrDefault(t => !t.IsInterface && !t.IsAbstract && t.GetInterfaces().Any(i => i.Name == "IDynamicCore"));
+foreach (var folder in moduleFolders)
+{
+    var folderName = Path.GetFileName(folder);
 
-if (coreType == null) throw new Exception("Core type not found!");
+    if (!folderName.Contains("Module.", StringComparison.OrdinalIgnoreCase)) continue;
 
-var instance = Activator.CreateInstance(coreType);
+    var dllPath = Path.Combine(folder, $"{folderName}.dll");
 
-var serviceCollection = new ServiceCollection();
-coreType.GetMethod("ConfigureServices")?.Invoke(instance, [serviceCollection]);
+    var alc = new CustomAssemblyLoadContext(folderName, dllPath);
+    var assembly = alc.LoadFromAssemblyPath(dllPath);
 
-var startTask = coreType.GetMethod("Start")?.Invoke(instance, null) as Task;
-startTask?.GetAwaiter().GetResult();
-startTask = null!;
+    var coreType = assembly.GetTypes()
+        .FirstOrDefault(
+            t => !t.IsInterface
+            && !t.IsAbstract
+            && t.GetInterfaces().Any(i => i.Name == "IDynamicCore"))
+        ?? throw new Exception("Core type not found!");
+
+    var instance = Activator.CreateInstance(coreType)
+        ?? throw new Exception("Failed to create an instance of the core type!");
+
+    var services = new ServiceCollection();
+
+    coreType.GetMethod("ConfigureServices")?.Invoke(instance, [services]);
+
+    var startTask = coreType.GetMethod("Start")?.Invoke(instance, null) as Task;
+    startTask?.GetAwaiter().GetResult();
+    startTask = null;
+
+    activeModules.Add((alc, instance, coreType));
+    Console.WriteLine($"[OK] Module {folderName} started.");
+}
+
+assembliesPath = null!;
+moduleFolders = null!;
 
 Console.WriteLine(">>> Module is running. Press any key to stop...");
-Console.ReadLine();
+await Task.Run(Console.ReadKey);
+Console.WriteLine();
 
-var stopTask = coreType.GetMethod("Stop")?.Invoke(instance, null) as Task;
-stopTask?.GetAwaiter().GetResult();
-stopTask = null!;
+var weakReferences = new List<WeakReference>();
 
-coreType = null!;
-assembly = null!;
-instance = null!;
-serviceCollection = null!;
+foreach (var (alc, instance, coreType) in activeModules)
+{
+    var stopTask = coreType.GetMethod("Stop")?.Invoke(instance, null) as Task;
+    stopTask?.GetAwaiter().GetResult();
+    stopTask = null;
 
-alc.Unload();
-alc = null!;
+    weakReferences.Add(new WeakReference(alc));
 
-var weakAlc = new WeakReference(alc);
+    alc.Unload();
+}
 
-for (int i = 0; i < 12 && weakAlc.IsAlive; i++)
+activeModules.Clear();
+activeModules = null!;
+
+for (int i = 0; i < 12 && weakReferences.Any(w => w.IsAlive); i++)
 {
     GC.Collect();
     GC.WaitForPendingFinalizers();
     GC.Collect();
 
-    if (weakAlc.IsAlive)
+    if (weakReferences.Any(wr => wr.IsAlive))
     {
         await Task.Delay(200);
         Console.WriteLine($"Step {i + 1}/12: Waiting for GC...");
     }
 }
 
-if (weakAlc.IsAlive)
+if (weakReferences.Any(wr => wr.IsAlive))
 {
     Console.WriteLine("FATAL: ALC is still alive. Step 12/12.");
 }
@@ -62,48 +87,12 @@ else
 
 foreach (Assembly asm in AppDomain.CurrentDomain.GetAssemblies())
 {
-    var a = AssemblyLoadContext.GetLoadContext(asm);
+    var alc = AssemblyLoadContext.GetLoadContext(asm);
 
-    Console.WriteLine($"Assembly: {asm.GetName().Name} | Context: {a?.Name ?? "Unknown"}");
+    if (alc?.Name != "Default")
+    {
+        Console.WriteLine($"Assembly: {asm.GetName().Name} | Context: {alc?.Name ?? "Unknown"}");
+    }
 }
 
 Console.ReadLine();
-
-public sealed class CustomAssemblyLoadContext : AssemblyLoadContext
-{
-    private AssemblyDependencyResolver? _resolver;
-    private string? _mainAssemblyName;
-
-    public CustomAssemblyLoadContext(string name, string componentAssemblyPath)
-    : base(name, isCollectible: true)
-    {
-        _resolver = new AssemblyDependencyResolver(componentAssemblyPath);
-        _mainAssemblyName = Path.GetFileNameWithoutExtension(componentAssemblyPath);
-
-        Default.Resolving += OnDefaultResolving;
-    }
-
-    // To load the packages into the Default context
-    private Assembly? OnDefaultResolving(AssemblyLoadContext context, AssemblyName assemblyName)
-    {
-        var assemblyPath = _resolver?.ResolveAssemblyToPath(assemblyName);
-
-        Console.WriteLine($"[Default.Resolving] {assemblyName.Name} → {assemblyPath ?? "NULL"}");
-
-        if (assemblyPath == null)
-            return null;
-
-        if (assemblyName.Name == _mainAssemblyName)
-            return null;
-
-        return Default.LoadFromAssemblyPath(assemblyPath);
-    }
-
-    public new void Unload()
-    {
-        Default.Resolving -= OnDefaultResolving;
-        _mainAssemblyName = null;
-        _resolver = null;
-        base.Unload();
-    }
-}

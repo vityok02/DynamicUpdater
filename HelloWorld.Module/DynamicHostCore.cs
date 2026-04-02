@@ -1,8 +1,8 @@
-﻿using HelloWorld.Module.BackgroundServices;
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Module.Worker.BackgroundServices;
 
-namespace HelloWorld.Module;
+namespace Module.Worker;
 
 public class DynamicHostCore : IDynamicCore
 {

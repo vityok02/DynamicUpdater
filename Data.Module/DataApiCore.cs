@@ -1,20 +1,20 @@
 ﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 
-namespace Data.Module;
+namespace Module.Api;
 
 public class DataApiCore : IDynamicCore
 {
     private CancellationTokenSource _cts = new();
-    private WebApplication? _app;
+    private WebApplication _app = null!;
     private WebApplicationBuilder _appBuilder = WebApplication.CreateBuilder();
 
     public void ConfigureServices(IServiceCollection services)
     {
-        _appBuilder.Services.AddDbContextFactory<AppDbContext>(options =>
+        _appBuilder.Services.AddDbContext<AppDbContext>(options =>
         {
             options.UseNpgsql("Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=postgres");
             options.EnableServiceProviderCaching(false);
@@ -26,48 +26,61 @@ public class DataApiCore : IDynamicCore
         }
     }
 
+    class DataRequest
+    {
+        public string Value { get; set; } = null!;
+    }
+
     public async Task Start()
     {
         _appBuilder.WebHost.UseUrls("http://localhost:9001");
 
         _app = _appBuilder.Build();
+        _appBuilder = null!;
 
-        using (var scope = _app.Services.CreateScope())
+        _app.Use(async (context, next) =>
         {
-            var logger = scope.ServiceProvider.GetRequiredService<ILogger<DataApiCore>>();
-
-            logger.LogInformation("DataApiCore started. Initializing database...");
-
-            var dbContextFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AppDbContext>>();
-
-            var dbContext = dbContextFactory.CreateDbContext();
-
-            var dbSet = dbContext.Set<Data>();
-
-            var data = dbSet
-                .ToArray();
-
-            foreach (var item in data)
+            if (context.Request.Path.Equals("/api/data", StringComparison.OrdinalIgnoreCase))
             {
-                Console.WriteLine(item);
-            }
-        }
+                var dbContext = context.RequestServices.GetRequiredService<AppDbContext>();
 
-        _app.MapGet("/", (ILoggerFactory loggerFactory) =>
-        {
-            var logger = loggerFactory.CreateLogger("DynamicPlugin");
-            var message = $"Data API is alive: {DateTime.Now}";
-            logger.LogInformation(message);
-            return message;
-        });
+                if (HttpMethods.IsGet(context.Request.Method))
+                {
+                    var items = dbContext.Items.AsNoTracking().ToList();
+                    await context.Response.WriteAsJsonAsync(items, DynamicJsonContext.Default.Options);
+                    return;
+                }
 
-        // MEMORY LEAK
-        _app.MapGet("/api/data", async (IDbContextFactory<AppDbContext> dbContextFactory) =>
-        {
-            using (var dbContext = dbContextFactory.CreateDbContext())
-            {
-                return await dbContext.Items.AsNoTracking().ToListAsync();
+                if (HttpMethods.IsPost(context.Request.Method))
+                {
+                    try
+                    {
+                        var requestData = await context.Request.ReadFromJsonAsync<DataRequest>(DynamicJsonContext.Default.Options);
+
+                        if (requestData == null || string.IsNullOrWhiteSpace(requestData.Value))
+                        {
+                            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                            await context.Response.WriteAsync("Missing 'Value'");
+                            return;
+                        }
+
+                        var newItem = new Data(Guid.NewGuid(), requestData.Value);
+                        dbContext.Items.Add(newItem);
+                        await dbContext.SaveChangesAsync();
+
+                        context.Response.StatusCode = StatusCodes.Status201Created;
+                        await context.Response.WriteAsJsonAsync(newItem, DynamicJsonContext.Default.Options);
+                    }
+                    catch (Exception)
+                    {
+                        context.Response.StatusCode = StatusCodes.Status400BadRequest;
+                        await context.Response.WriteAsync("Invalid JSON");
+                    }
+                    return;
+                }
             }
+
+            await next(context);
         });
 
         await _app.StartAsync(_cts.Token);
@@ -78,36 +91,12 @@ public class DataApiCore : IDynamicCore
         if (_app is null) return;
 
         _cts.Cancel();
-        using var stopCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-
-        await _app.StopAsync(stopCts.Token);
+        await _app.StopAsync();
         await _app.DisposeAsync();
+        _app = null!;
 
-        _app = null;
-        _appBuilder = null!;
+        DynamicJsonContext.Default.Dispose();
 
         _cts.Dispose();
     }
 }
-
-public class AppDbContext : DbContext
-{
-    public AppDbContext(DbContextOptions<AppDbContext> options)
-        : base(options)
-    {
-    }
-
-    public DbSet<Data> Items { get; set; } = null!;
-
-    protected override void OnModelCreating(ModelBuilder modelBuilder)
-    {
-        var dataEntity = modelBuilder.Entity<Data>();
-
-        dataEntity.HasKey(x => x.Id);
-
-        dataEntity.Property(x => x.Id)
-            .ValueGeneratedOnAdd();
-    }
-}
-
-public record Data(Guid Id, string Value);
