@@ -6,23 +6,30 @@ using System.Text.Json.Serialization.Metadata;
 
 namespace Module.Api;
 
-public class DynamicJsonSerializerContext : JsonSerializerContext, IDisposable
+public class DynamicJsonSerializerContext
+    : JsonSerializerContext, IDisposable
 {
     private ConditionalWeakTable<Type, JsonTypeInfo> _cache = new();
     private JsonSerializerOptions? _options;
 
     protected override JsonSerializerOptions? GeneratedSerializerOptions => _options;
 
-    public new JsonSerializerOptions Options => _options ?? throw new ObjectDisposedException(nameof(DynamicJsonSerializerContext));
+    public new JsonSerializerOptions Options => _options
+        ?? throw new ObjectDisposedException(nameof(DynamicJsonSerializerContext));
 
-    public DynamicJsonSerializerContext(JsonSerializerOptions options) : base(options)
+    public DynamicJsonSerializerContext(JsonSerializerOptions options)
+        : base(options)
     {
         _options = options;
     }
 
     public override JsonTypeInfo? GetTypeInfo(Type type)
     {
-        if (_cache == null) return null;
+        if (_cache == null)
+        {
+            return null;
+        }
+
         return _cache.GetValue(type, t => CreateTypeInfo(t));
     }
 
@@ -69,7 +76,10 @@ public class DynamicJsonSerializerContext : JsonSerializerContext, IDisposable
     private static Type? GetEnumerableElementType(Type t)
     {
         if (t.IsGenericType && t.GetGenericArguments().Length == 1)
+        {
             return t.GetGenericArguments()[0];
+        }
+
         return t.GetInterfaces()
             .Where(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>))
             .Select(i => i.GetGenericArguments()[0])

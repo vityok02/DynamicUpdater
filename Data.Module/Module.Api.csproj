@@ -21,7 +21,7 @@
 
 	<Target Name="CopyToAssemblies" AfterTargets="Build">
 		<PropertyGroup>
-			<PluginOutputDir>$(MSBuildThisFileDirectory)..\Assemblies\Module.Data</PluginOutputDir>
+			<PluginOutputDir>$(MSBuildThisFileDirectory)..\Assemblies\Module.Api</PluginOutputDir>
 		</PropertyGroup>
 
 		<MakeDir Directories="$(PluginOutputDir)" />

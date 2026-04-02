@@ -4,27 +4,30 @@ using Module.Worker.BackgroundServices;
 
 namespace Module.Worker;
 
-public static class Startup
+public static class WorkerStartup
 {
-    public static async Task RunAsync(IServiceProvider hostServices, CancellationToken ct)
+    public static async Task RunAsync(
+        IServiceCollection services,
+        CancellationToken ct)
     {
-        var services = new ServiceCollection();
-
         services.AddTransient<HelloWorldService>();
 
-        await using var internalProvider = services.BuildServiceProvider();
+        await using var serviceProvider = services
+            .BuildServiceProvider();
 
-        var hostedServices = internalProvider.GetServices<HelloWorldService>()
+        var hostedServices = serviceProvider
+            .GetServices<HelloWorldService>()
             .Cast<IHostedService>()
             .ToList();
 
         try
         {
+
             foreach (var service in hostedServices)
             {
                 await service.StartAsync(ct);
             }
-            
+
             await Task.Delay(Timeout.Infinite, ct);
         }
         catch (OperationCanceledException)
@@ -35,10 +38,17 @@ public static class Startup
             foreach (var service in Enumerable.Reverse(hostedServices))
             {
                 using var stopCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
                 await service.StopAsync(stopCts.Token);
 
-                if (service is IAsyncDisposable ad) await ad.DisposeAsync();
-                else if (service is IDisposable d) d.Dispose();
+                if (service is IAsyncDisposable ad)
+                {
+                    await ad.DisposeAsync();
+                }
+                else if (service is IDisposable d)
+                {
+                    d.Dispose();
+                }
             }
 
             hostedServices.Clear();

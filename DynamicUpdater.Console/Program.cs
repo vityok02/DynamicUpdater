@@ -2,10 +2,13 @@
 using System.Reflection;
 using System.Runtime.Loader;
 
-var assembliesPath = @"C:\Main\Repositories\DynamicUpdater\Assemblies\";
+var projectRoot = GetProjectRoot();
+var solutionRoot = Directory.GetParent(projectRoot)!.FullName;
+var assembliesPath = Path.Combine(solutionRoot, "Assemblies");
+
 var moduleFolders = Directory.GetDirectories(assembliesPath);
 
-var activeModules = new List<(CustomAssemblyLoadContext alc, ServiceProvider sp, CancellationTokenSource cts)>();
+var activeModules = new List<(CustomAssemblyLoadContext alc, CancellationTokenSource cts)>();
 
 foreach (var folder in moduleFolders)
 {
@@ -18,38 +21,35 @@ foreach (var folder in moduleFolders)
     var alc = new CustomAssemblyLoadContext(folderName, dllPath);
     var assembly = alc.LoadFromAssemblyPath(dllPath);
 
+    // Register required services here if needed
     var services = new ServiceCollection();
-
-    var sp = services.BuildServiceProvider();
 
     var entryMethod = assembly.GetTypes()
         .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static))
         .FirstOrDefault(m => m.Name == "RunAsync")
-        ?? throw new Exception("Entry point not found");
+            ?? throw new Exception("Entry point not found");
 
     var cts = new CancellationTokenSource();
-    var result = entryMethod.Invoke(null, [sp, cts.Token]);
+    var result = entryMethod.Invoke(null, [services, cts.Token]);
     entryMethod = null;
     result = null;
 
-    activeModules.Add((alc, sp, cts));
+    activeModules.Add((alc, cts));
     Console.WriteLine($"[OK] Module {folderName} started.");
 }
 
 assembliesPath = null;
 moduleFolders = null;
 
-Console.WriteLine(">>> Module is running. Press any key to stop...");
 await Task.Run(Console.ReadKey);
 Console.WriteLine();
 
 var weakReferences = new List<WeakReference>();
 
-foreach (var (alc, sp, cts) in activeModules)
+foreach (var (alc, cts) in activeModules)
 {
     weakReferences.Add(new WeakReference(alc));
 
-    sp.Dispose();
     cts.Cancel();
     cts.Dispose();
     alc.Unload();
@@ -91,3 +91,6 @@ foreach (Assembly asm in AppDomain.CurrentDomain.GetAssemblies())
 }
 
 Console.ReadLine();
+
+static string GetProjectRoot([System.Runtime.CompilerServices.CallerFilePath] string path = "")
+    => Path.GetDirectoryName(path)!;
