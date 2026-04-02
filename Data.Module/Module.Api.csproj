@@ -21,7 +21,7 @@
 
 	<Target Name="CopyToAssemblies" AfterTargets="Build">
 		<PropertyGroup>
-			<PluginOutputDir>$(MSBuildThisFileDirectory)..\DynamicUpdater.Host\Assemblies\Module.Data</PluginOutputDir>
+			<PluginOutputDir>$(MSBuildThisFileDirectory)..\Assemblies\Module.Data</PluginOutputDir>
 		</PropertyGroup>
 
 		<MakeDir Directories="$(PluginOutputDir)" />

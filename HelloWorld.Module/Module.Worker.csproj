@@ -8,13 +8,9 @@
 		<CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
 	</PropertyGroup>
 
-	<ItemGroup>
-		<PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
-	</ItemGroup>
-
 	<Target Name="CopyToAssemblies" AfterTargets="Build">
 		<PropertyGroup>
-			<PluginOutputDir>$(MSBuildThisFileDirectory)..\DynamicUpdater.Host\Assemblies\Module.HelloWorld</PluginOutputDir>
+			<PluginOutputDir>$(MSBuildThisFileDirectory)..\Assemblies\Module.Worker</PluginOutputDir>
 		</PropertyGroup>
 
 		<MakeDir Directories="$(PluginOutputDir)" />
@@ -25,5 +21,9 @@
 
 		<Copy SourceFiles="@(AllOutputFiles)" DestinationFolder="$(PluginOutputDir)%(RecursiveDir)" SkipUnchangedFiles="true" />
 	</Target>
-	
+
+	<ItemGroup>
+		<PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.0" />
+	</ItemGroup>
+
 </Project>

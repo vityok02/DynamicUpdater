@@ -2,10 +2,10 @@
 using System.Reflection;
 using System.Runtime.Loader;
 
-var assembliesPath = @"C:\Main\Repositories\DynamicUpdater\DynamicUpdater.Host\Assemblies\";
+var assembliesPath = @"C:\Main\Repositories\DynamicUpdater\Assemblies\";
 var moduleFolders = Directory.GetDirectories(assembliesPath);
 
-var activeModules = new List<(CustomAssemblyLoadContext Alc, object Instance, Type CoreType)>();
+var activeModules = new List<(CustomAssemblyLoadContext alc, ServiceProvider sp, CancellationTokenSource cts)>();
 
 foreach (var folder in moduleFolders)
 {
@@ -18,30 +18,26 @@ foreach (var folder in moduleFolders)
     var alc = new CustomAssemblyLoadContext(folderName, dllPath);
     var assembly = alc.LoadFromAssemblyPath(dllPath);
 
-    var coreType = assembly.GetTypes()
-        .FirstOrDefault(
-            t => !t.IsInterface
-            && !t.IsAbstract
-            && t.GetInterfaces().Any(i => i.Name == "IDynamicCore"))
-        ?? throw new Exception("Core type not found!");
-
-    var instance = Activator.CreateInstance(coreType)
-        ?? throw new Exception("Failed to create an instance of the core type!");
-
     var services = new ServiceCollection();
 
-    coreType.GetMethod("ConfigureServices")?.Invoke(instance, [services]);
+    var sp = services.BuildServiceProvider();
 
-    var startTask = coreType.GetMethod("Start")?.Invoke(instance, null) as Task;
-    startTask?.GetAwaiter().GetResult();
-    startTask = null;
+    var entryMethod = assembly.GetTypes()
+        .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static))
+        .FirstOrDefault(m => m.Name == "RunAsync")
+        ?? throw new Exception("Entry point not found");
 
-    activeModules.Add((alc, instance, coreType));
+    var cts = new CancellationTokenSource();
+    var result = entryMethod.Invoke(null, [sp, cts.Token]);
+    entryMethod = null;
+    result = null;
+
+    activeModules.Add((alc, sp, cts));
     Console.WriteLine($"[OK] Module {folderName} started.");
 }
 
-assembliesPath = null!;
-moduleFolders = null!;
+assembliesPath = null;
+moduleFolders = null;
 
 Console.WriteLine(">>> Module is running. Press any key to stop...");
 await Task.Run(Console.ReadKey);
@@ -49,14 +45,13 @@ Console.WriteLine();
 
 var weakReferences = new List<WeakReference>();
 
-foreach (var (alc, instance, coreType) in activeModules)
+foreach (var (alc, sp, cts) in activeModules)
 {
-    var stopTask = coreType.GetMethod("Stop")?.Invoke(instance, null) as Task;
-    stopTask?.GetAwaiter().GetResult();
-    stopTask = null;
-
     weakReferences.Add(new WeakReference(alc));
 
+    sp.Dispose();
+    cts.Cancel();
+    cts.Dispose();
     alc.Unload();
 }
 
