@@ -5,11 +5,13 @@ using System.Runtime.Loader;
 
 var solutionRoot = Directory.GetParent(GetProjectRoot())!.FullName;
 var assembliesPath = Path.Combine(solutionRoot, "Assemblies");
+var activeAssembliesPath = Path.Combine(assembliesPath, "Active");
 
-var moduleFolders = Directory.GetDirectories(assembliesPath);
+var moduleFolders = Directory.GetDirectories(activeAssembliesPath);
 
 var activeModules = new List<(DynamicAssemblyLoadContext alc, CancellationTokenSource cts)>();
 
+#region START_ASSEMBLIES
 foreach (var folder in moduleFolders)
 {
     var folderName = Path.GetFileName(folder);
@@ -44,14 +46,13 @@ foreach (var folder in moduleFolders)
     activeModules.Add((alc, cts));
     Console.WriteLine($"[OK] Module [{folderName}] started.");
 }
+#endregion
 
-assembliesPath = null;
-moduleFolders = null;
-
-Console.WriteLine("Press the key to continue...");
+Console.WriteLine("Press the key to unload assemblies...");
 await Task.Run(Console.ReadKey);
 Console.WriteLine();
 
+#region UNLOAD_ASSEMBLIES
 var weakReferences = new List<WeakReference>();
 
 foreach (var (alc, cts) in activeModules)
@@ -81,6 +82,8 @@ for (int i = 0; i < 12 && weakReferences.Any(w => w.IsAlive); i++)
 if (weakReferences.Any(wr => wr.IsAlive))
 {
     Console.WriteLine("FATAL: ALC is still alive. Step 12/12.");
+
+    Environment.Exit(100);
 }
 else
 {
@@ -96,9 +99,63 @@ foreach (Assembly asm in AppDomain.CurrentDomain.GetAssemblies())
         Console.WriteLine($"Assembly: {asm.GetName().Name} | Context: {alc?.Name ?? "Unknown"}");
     }
 }
+#endregion
 
-Console.ReadLine();
+Console.WriteLine("Press the key to update assemblies...");
+await Task.Run(Console.ReadKey);
+
+Console.ReadKey();
+UpdateAssemblies(
+    Path.Combine(assembliesPath, "Incoming"),
+    Path.Combine(assembliesPath, "Active"));
+
+Console.ReadKey();
 
 static string GetProjectRoot(
     [System.Runtime.CompilerServices.CallerFilePath] string path = "") 
     => Path.GetDirectoryName(path)!;
+
+void UpdateAssemblies(string incomingPath, string activePath)
+{
+    if (!Directory.Exists(incomingPath)
+        || !Directory.GetFileSystemEntries(incomingPath).Any())
+    {
+        return;
+    }
+
+    Console.WriteLine("[UPDATE] New files found. Applying...");
+
+    var incomingModules = Directory.GetDirectories(incomingPath);
+
+    foreach (var moduleDirectory in incomingModules)
+    {
+        var moduleName = Path.GetFileName(moduleDirectory);
+        var targetDirectory = Path.Combine(activePath, moduleName);
+
+        if (!Directory.Exists(targetDirectory))
+        {
+            Directory.CreateDirectory(targetDirectory);
+        }
+
+        try
+        {
+            foreach (var file in Directory.GetFiles(moduleDirectory))
+            {
+                var targetFilePath = Path.Combine(targetDirectory, Path.GetFileName(file));
+                File.Copy(file, targetFilePath, true);
+            }
+
+            Directory.Delete(moduleDirectory, true);
+        }
+        catch (IOException)
+        {
+        }
+    }
+
+    Console.WriteLine("[UPDATE] All modules updated in Active folder.");
+}
+
+void DownloadAssemblies(string assembliesRootPath)
+{
+    // Download assemblies from remote source and save them to the Download
+}

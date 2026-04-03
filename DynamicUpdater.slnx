@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/Solution Items/">
     <File Path="Ideas.txt" />
+    <File Path="Plans.md" />
 	<File Path="README.md" />
   </Folder>
   <Project Path="Data.Module/Module.Api.csproj" />

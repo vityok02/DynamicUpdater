@@ -10,7 +10,7 @@
 
 	<Target Name="CopyToAssemblies" AfterTargets="Build">
 		<PropertyGroup>
-			<PluginOutputDir>$(MSBuildThisFileDirectory)..\Assemblies\Module.Worker</PluginOutputDir>
+			<PluginOutputDir>$(MSBuildThisFileDirectory)..\Assemblies\Incoming\Module.Worker</PluginOutputDir>
 		</PropertyGroup>
 
 		<MakeDir Directories="$(PluginOutputDir)" />

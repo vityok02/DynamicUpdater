@@ -12,4 +12,9 @@
     <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Assemblies\Active\" />
+    <Folder Include="Assemblies\Incoming\" />
+  </ItemGroup>
+
 </Project>
