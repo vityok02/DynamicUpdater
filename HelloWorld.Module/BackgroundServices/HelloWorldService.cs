@@ -6,7 +6,7 @@ public sealed class HelloWorldService : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(5));
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
 
         Console.WriteLine($"Hello world! | {DateTime.Now}");
 

@@ -1,12 +1,12 @@
 ﻿using System.Reflection;
 using System.Runtime.Loader;
 
-public sealed class CustomAssemblyLoadContext : AssemblyLoadContext
+public sealed class DynamicAssemblyLoadContext : AssemblyLoadContext
 {
     private AssemblyDependencyResolver? _resolver;
     private string? _mainAssemblyName;
 
-    public CustomAssemblyLoadContext(string name, string componentAssemblyPath)
+    public DynamicAssemblyLoadContext(string name, string componentAssemblyPath)
     : base(name, isCollectible: true)
     {
         _resolver = new AssemblyDependencyResolver(componentAssemblyPath);

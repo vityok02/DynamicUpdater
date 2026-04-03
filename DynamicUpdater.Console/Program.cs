@@ -2,13 +2,13 @@
 using System.Reflection;
 using System.Runtime.Loader;
 
-var projectRoot = GetProjectRoot();
-var solutionRoot = Directory.GetParent(projectRoot)!.FullName;
+
+var solutionRoot = Directory.GetParent(GetProjectRoot())!.FullName;
 var assembliesPath = Path.Combine(solutionRoot, "Assemblies");
 
 var moduleFolders = Directory.GetDirectories(assembliesPath);
 
-var activeModules = new List<(CustomAssemblyLoadContext alc, CancellationTokenSource cts)>();
+var activeModules = new List<(DynamicAssemblyLoadContext alc, CancellationTokenSource cts)>();
 
 foreach (var folder in moduleFolders)
 {
@@ -18,10 +18,9 @@ foreach (var folder in moduleFolders)
 
     var dllPath = Path.Combine(folder, $"{folderName}.dll");
 
-    var alc = new CustomAssemblyLoadContext(folderName, dllPath);
+    var alc = new DynamicAssemblyLoadContext(folderName, dllPath);
     var assembly = alc.LoadFromAssemblyPath(dllPath);
 
-    // Register required services here if needed
     var services = new ServiceCollection();
 
     var entryMethod = assembly.GetTypes()
@@ -30,17 +29,26 @@ foreach (var folder in moduleFolders)
             ?? throw new Exception("Entry point not found");
 
     var cts = new CancellationTokenSource();
-    var result = entryMethod.Invoke(null, [services, cts.Token]);
-    entryMethod = null;
-    result = null;
+    
+    var moduleTask = (Task)entryMethod.Invoke(null, [services, cts.Token])!;
+
+    _ = moduleTask.ContinueWith(t =>
+    {
+        if (t.IsFaulted)
+        {
+            Console.WriteLine($"Exception in module [{folderName}]");
+            Console.WriteLine(t.Exception.ToString());
+        }
+    }, TaskContinuationOptions.OnlyOnFaulted);
 
     activeModules.Add((alc, cts));
-    Console.WriteLine($"[OK] Module {folderName} started.");
+    Console.WriteLine($"[OK] Module [{folderName}] started.");
 }
 
 assembliesPath = null;
 moduleFolders = null;
 
+Console.WriteLine("Press the key to continue...");
 await Task.Run(Console.ReadKey);
 Console.WriteLine();
 
@@ -49,7 +57,6 @@ var weakReferences = new List<WeakReference>();
 foreach (var (alc, cts) in activeModules)
 {
     weakReferences.Add(new WeakReference(alc));
-
     cts.Cancel();
     cts.Dispose();
     alc.Unload();
@@ -92,5 +99,6 @@ foreach (Assembly asm in AppDomain.CurrentDomain.GetAssemblies())
 
 Console.ReadLine();
 
-static string GetProjectRoot([System.Runtime.CompilerServices.CallerFilePath] string path = "")
+static string GetProjectRoot(
+    [System.Runtime.CompilerServices.CallerFilePath] string path = "") 
     => Path.GetDirectoryName(path)!;

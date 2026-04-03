@@ -1,2 +1,3 @@
 MetadataLoadContext to validate the input assembly.
-assembly.EntryPoint
+
+Add restarting when unable to unload the assemblies

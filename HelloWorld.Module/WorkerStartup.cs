@@ -22,7 +22,6 @@ public static class WorkerStartup
 
         try
         {
-
             foreach (var service in hostedServices)
             {
                 await service.StartAsync(ct);
